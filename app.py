@@ -65,45 +65,61 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # Groq üzerindeki güncel aktif modeller
-    candidate_models = [
-        'llama-3.3-70b-versatile',
-        'llama-3.1-70b-versatile',
-        'llama-3.2-3b-preview',
-    ]
-
-    bot_response = None
-    errors = []
-
-    for model_name in candidate_models:
-      try:
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {
-                    'role': 'system',
-                    'content': (
-                        'Sen Droppix platformunun akıllı asistani Droppix'
-                        " AI'sin."
-                    ),
-                },
-                {'role': 'user', 'content': user_message},
-            ],
-        )
-        bot_response = completion.choices[0].message.content
-        if bot_response:
-          break
-      except Exception as err:
-        errors.append(f'{model_name}: {str(err)}')
-
-    if not bot_response:
-      first_err = errors[0] if errors else 'Bilinmeyen hata'
+    # 1. Groq hesabında aktif olan modelleri doğrudan sorgula
+    try:
+      models_page = client.models.list()
+      available_models = [m.id for m in models_page.data]
+    except Exception as api_err:
       return (
-          jsonify({'error': f'Groq bağlantı hatası. Detay: {first_err}'}),
+          jsonify({
+              'error': (
+                  'Groq API Key doğrulaması başarısız. Lütfen Render'
+                  f' Environment ayarlarınızı kontrol edin. Detay: {str(api_err)}'
+              )
+          }),
           500,
       )
 
-    # Veritabanı Kaydı
+    if not available_models:
+      return (
+          jsonify({'error': 'Groq hesabınızda aktif kullanımda model bulunamadı.'}),
+          500,
+      )
+
+    # 2. Aktif modeller arasından uygun olanı seç
+    chosen_model = available_models[0]
+    preferred_keywords = [
+        'llama-3.3',
+        'llama-3.1',
+        'llama-3.2',
+        'mixtral',
+        'gemma',
+    ]
+
+    for kw in preferred_keywords:
+      matched = [m for m in available_models if kw in m]
+      if matched:
+        chosen_model = matched[0]
+        break
+
+    # 3. Yanıtı üret
+    completion = client.chat.completions.create(
+        model=chosen_model,
+        messages=[
+            {
+                'role': 'system',
+                'content': (
+                    'Sen Droppix platformunun akıllı asistani Droppix'
+                    " AI'sin."
+                ),
+            },
+            {'role': 'user', 'content': user_message},
+        ],
+    )
+
+    bot_response = completion.choices[0].message.content
+
+    # 4. Veritabanına Kaydet
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     cursor.execute(
@@ -114,7 +130,7 @@ def chat():
     conn.commit()
     conn.close()
 
-    return jsonify({'response': bot_response})
+    return jsonify({'response': bot_response, 'model_used': chosen_model})
 
   except Exception as e:
     return jsonify({'error': str(e)}), 500
