@@ -86,12 +86,12 @@ def chat():
           500,
       )
 
-    # 2. Aktif modeller arasından uygun olanı seç
+    # 2. Türkçe yeteneği yüksek modelleri önceliklendir
     chosen_model = available_models[0]
     preferred_keywords = [
-        'llama-3.3',
-        'llama-3.1',
-        'llama-3.2',
+        'llama-3.3-70b',
+        'llama-3.1-70b',
+        'llama-3.1-8b',
         'mixtral',
         'gemma',
     ]
@@ -105,14 +105,17 @@ def chat():
     # 3. Yanıtı üret
     completion = client.chat.completions.create(
         model=chosen_model,
+        temperature=0.6,
         messages=[
             {
                 'role': 'system',
                 'content': (
-                    'Adın Droppix AI. Droppix\'in akıllı asistanısın. Kendini'
-                    ' tanıtırken "Droppix\'in akıllı asistanıyım" ifadesini'
-                    ' kullan. Kullanıcılara samimi, profesyonel ve yardımcı bir'
-                    ' dille Türkçe yanıt ver.'
+                    "Sen Droppix AI'sin, Droppix platformunun akıllı"
+                    ' asistanısın. YALNIZCA ve SADECE Türkçe yanıt ver. Başka'
+                    ' hiçbir dil veya yabancı kelime kullanma. Kendini'
+                    " tanıtırken 'Droppix'in akıllı asistanıyım' ifadesini"
+                    ' kullan. Yanıtların son derece akıcı, düzgün ve'
+                    ' profesyonel olsun.'
                 ),
             },
             {'role': 'user', 'content': user_message},
