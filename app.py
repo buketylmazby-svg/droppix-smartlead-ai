@@ -1,3 +1,47 @@
+import os
+import sqlite3
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from groq import Groq
+
+app = Flask(__name__)
+CORS(app)
+
+
+# Veritabanı ve Tabloları Oluşturma
+def init_db():
+  conn = sqlite3.connect('database.db')
+  cursor = conn.cursor()
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            user_message TEXT,
+            bot_response TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS leads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            contact TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+  conn.commit()
+  conn.close()
+
+
+init_db()
+
+
+@app.route('/', methods=['GET'])
+def home():
+  return jsonify({'status': 'online', 'service': 'Droppix SmartLead AI Backend'})
+
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
   try:
@@ -10,11 +54,19 @@ def chat():
 
     api_key = os.environ.get('GROQ_API_KEY')
     if not api_key:
-      return jsonify({
-          'error': 'GROQ_API_KEY Render ortam değişkenlerinde bulunamadı.'
-      }), 500
+      return (
+          jsonify({
+              'error': (
+                  'GROQ_API_KEY Render Environment ortam değişkenlerinde'
+                  ' bulunamadı.'
+              )
+          }),
+          500,
+      )
 
-    # Denenecek güncel Groq modelleri sıralı listesi
+    client = Groq(api_key=api_key)
+
+    # Groq üzerinde aktif denenecek modeller sıralı listesi
     candidate_models = [
         'llama-3.3-70b-versatile',
         'llama-3.1-8b-instant',
@@ -23,12 +75,11 @@ def chat():
     ]
 
     bot_response = None
-    last_error = None
+    last_error = ''
 
-    # Modelleri sırayla dener, çalışan ilk modelle yanıt üretir
     for model_name in candidate_models:
       try:
-        completion = groq_client.chat.completions.create(
+        completion = client.chat.completions.create(
             model=model_name,
             messages=[
                 {
@@ -42,20 +93,23 @@ def chat():
             ],
         )
         bot_response = completion.choices[0].message.content
-        break  # Başarılı olursa döngüden çık
+        if bot_response:
+          break
       except Exception as err:
         last_error = str(err)
-        continue
 
     if not bot_response:
       return (
           jsonify({
-              'error': f'Hiçbir model yanıt vermedi. Son hata: {last_error}'
+              'error': (
+                  'Groq API yanıt vermedi. Lütfen API anahtarınızı (GROQ_API_KEY)'
+                  f' kontrol edin. Detay: {last_error}'
+              )
           }),
           500,
       )
 
-    # Veritabanına Kaydetme
+    # Veritabanı Kaydı
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     cursor.execute(
@@ -69,5 +123,34 @@ def chat():
     return jsonify({'response': bot_response})
 
   except Exception as e:
-    print(f'Chat Hata: {e}')
     return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lead', methods=['POST'])
+def lead():
+  try:
+    data = request.get_json() or {}
+    name = data.get('name', '')
+    contact = data.get('contact', '')
+    notes = data.get('notes', '')
+
+    if not name or not contact:
+      return jsonify({'error': 'İsim ve iletişim bilgisi zorunludur.'}), 400
+
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO leads (name, contact, notes) VALUES (?, ?, ?)',
+        (name, contact, notes),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'success', 'message': 'Lead kaydedildi.'})
+
+  except Exception as e:
+    return jsonify({'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+  app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
