@@ -9,28 +9,31 @@ CORS(app)
 
 
 def init_db():
-  conn = sqlite3.connect('database.db')
-  cursor = conn.cursor()
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            user_message TEXT,
-            bot_response TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            contact TEXT,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-  conn.commit()
-  conn.close()
+  try:
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                user_message TEXT,
+                bot_response TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                contact TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    conn.commit()
+    conn.close()
+  except Exception as db_err:
+    print(f'DB Init Hata: {db_err}')
 
 
 init_db()
@@ -65,28 +68,25 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Groq hesabında aktif olan modelleri sorgula
+    # 1. Aktif modelleri sorgula
     try:
       models_page = client.models.list()
       available_models = [m.id for m in models_page.data]
     except Exception as api_err:
       return (
           jsonify({
-              'error': (
-                  'Groq API Key doğrulaması başarısız. Lütfen Render'
-                  f' Environment ayarlarınızı kontrol edin. Detay: {str(api_err)}'
-              )
+              'error': f'Groq API Bağlantı Hatası. Detay: {str(api_err)}'
           }),
           500,
       )
 
     if not available_models:
       return (
-          jsonify({'error': 'Groq hesabınızda aktif kullanımda model bulunamadı.'}),
+          jsonify({'error': 'Groq hesabınızda aktif model bulunamadı.'}),
           500,
       )
 
-    # 2. Türkçe yeteneği yüksek modelleri önceliklendir
+    # 2. Türkçe kalitesi yüksek modelleri önceliklendir
     chosen_model = available_models[0]
     preferred_keywords = [
         'llama-3.3-70b',
@@ -102,38 +102,38 @@ def chat():
         chosen_model = matched[0]
         break
 
-    # 3. Yanıtı üret
+    # 3. Groq İstegi
+    system_prompt = (
+        "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
+        "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı asistanıyım' ifadesini kullan. "
+        "Kullanıcı işbirliği, iletişim veya hizmet almak istediğinde nazikçe memnuniyetini belirt ve "
+        "size ulaşabilmemiz için adını ve iletişim bilgilerini (e-posta veya telefon) paylaşmasını rica et."
+    )
+
     completion = client.chat.completions.create(
         model=chosen_model,
         temperature=0.6,
         messages=[
-            {
-                'role': 'system',
-                'content': (
-                    "Sen Droppix AI'sin, Droppix platformunun akıllı"
-                    ' asistanısın. YALNIZCA ve SADECE Türkçe yanıt ver. Başka'
-                    ' hiçbir dil veya yabancı kelime kullanma. Kendini'
-                    " tanıtırken 'Droppix'in akıllı asistanıyım' ifadesini"
-                    ' kullan. Yanıtların son derece akıcı, düzgün ve'
-                    ' profesyonel olsun.'
-                ),
-            },
+            {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_message},
         ],
     )
 
     bot_response = completion.choices[0].message.content
 
-    # 4. Veritabanına Kaydet
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO chat_history (session_id, user_message, bot_response)'
-        ' VALUES (?, ?, ?)',
-        (session_id, user_message, bot_response),
-    )
-    conn.commit()
-    conn.close()
+    # 4. Veritabanına Kaydet (Hata alsa bile kullanıcının sohbetini bozmaz)
+    try:
+      conn = sqlite3.connect('database.db')
+      cursor = conn.cursor()
+      cursor.execute(
+          'INSERT INTO chat_history (session_id, user_message, bot_response)'
+          ' VALUES (?, ?, ?)',
+          (session_id, user_message, bot_response),
+      )
+      conn.commit()
+      conn.close()
+    except Exception as db_save_err:
+      print(f'Sohbet veritabanına kaydedilemedi: {db_save_err}')
 
     return jsonify({'response': bot_response, 'model_used': chosen_model})
 
