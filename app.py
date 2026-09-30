@@ -65,7 +65,7 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Groq hesabında aktif olan modelleri doğrudan sorgula
+    # 1. Groq hesabında aktif olan modelleri sorgula
     try:
       models_page = client.models.list()
       available_models = [m.id for m in models_page.data]
@@ -109,8 +109,10 @@ def chat():
             {
                 'role': 'system',
                 'content': (
-                    'Sen Droppix platformunun akıllı asistani Droppix'
-                    " AI'sin."
+                    'Adın Droppix AI. Droppix\'in akıllı asistanısın. Kendini'
+                    ' tanıtırken "Droppix\'in akıllı asistanıyım" ifadesini'
+                    ' kullan. Kullanıcılara samimi, profesyonel ve yardımcı bir'
+                    ' dille Türkçe yanıt ver.'
                 ),
             },
             {'role': 'user', 'content': user_message},
