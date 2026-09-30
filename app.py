@@ -68,56 +68,42 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Aktif modelleri al ve sohbet dışı (guardrail/whisper/classification) modelleri filtrele
+    # 1. Hesaptaki tüm modelleri al ve sohbet dışı/özel onaylı modelleri süz
     try:
       models_page = client.models.list()
       all_models = [m.id for m in models_page.data]
 
-      # Sohbet formatına uygun olmayan modelleri listeden çıkar
       ignored_keywords = [
           'guard',
           'whisper',
           'embed',
           'classifier',
           'moderation',
+          'orpheus',
+          'vision',
       ]
-      available_models = [
+      chat_models = [
           m
           for m in all_models
           if not any(ik in m.lower() for ik in ignored_keywords)
       ]
     except Exception as api_err:
       return (
+          jsonify(
+              {'error': f'Groq modelleri listelenemedi. Detay: {str(api_err)}'}
+          ),
+          500,
+      )
+
+    if not chat_models:
+      return (
           jsonify({
-              'error': f'Groq API Bağlantı Hatası. Detay: {str(api_err)}'
+              'error': 'Groq hesabınızda kullanılabilir sohbet modeli bulunamadı.'
           }),
           500,
       )
 
-    if not available_models:
-      return (
-          jsonify({'error': 'Groq hesabınızda uygun sohbet modeli bulunamadı.'}),
-          500,
-      )
-
-    # 2. Sohbet için en kaliteli Türkçe üreten modelleri önceliklendir
-    chosen_model = available_models[0]
-    preferred_keywords = [
-        'llama-3.3-70b',
-        'llama-3.1-70b',
-        'llama-3.1-8b',
-        'llama-3.2-3b',
-        'mixtral',
-        'gemma',
-    ]
-
-    for kw in preferred_keywords:
-      matched = [m for m in available_models if kw in m]
-      if matched:
-        chosen_model = matched[0]
-        break
-
-    # 3. Groq İstegi
+    # 2. Sistem Yönergesi
     system_prompt = (
         "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
         "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı"
@@ -127,16 +113,39 @@ def chat():
         ' telefon) paylaşmasını rica et.'
     )
 
-    completion = client.chat.completions.create(
-        model=chosen_model,
-        temperature=0.6,
-        messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_message},
-        ],
-    )
+    bot_response = None
+    used_model = None
+    last_error = ''
 
-    bot_response = completion.choices[0].message.content
+    # 3. Modellere sırayla istek at, yanıt veren ilk modeli seç
+    for model_id in chat_models:
+      try:
+        completion = client.chat.completions.create(
+            model=model_id,
+            temperature=0.6,
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_message},
+            ],
+        )
+        bot_response = completion.choices[0].message.content
+        if bot_response:
+          used_model = model_id
+          break
+      except Exception as err:
+        last_error = str(err)
+        continue
+
+    if not bot_response:
+      return (
+          jsonify({
+              'error': (
+                  'Hiçbir aktif sohbet modeli yanıt veremedi. Son hata:'
+                  f' {last_error}'
+              )
+          }),
+          500,
+      )
 
     # 4. Veritabanına Kaydet
     try:
@@ -152,7 +161,7 @@ def chat():
     except Exception as db_save_err:
       print(f'Sohbet veritabanına kaydedilemedi: {db_save_err}')
 
-    return jsonify({'response': bot_response, 'model_used': chosen_model})
+    return jsonify({'response': bot_response, 'model_used': used_model})
 
   except Exception as e:
     return jsonify({'error': str(e)}), 500
