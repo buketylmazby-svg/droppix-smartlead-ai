@@ -1,95 +1,127 @@
-from flask import Flask, request, jsonify
+import os
+import sqlite3
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-from database import get_db_connection
-from ai_service import get_ai_response
+from groq import Groq
 
 app = Flask(__name__)
-# Farklı domainlerden (örn. Wix Velo, React) erişim için CORS izni
-CORS(app)
+CORS(app)  # Tarayıcı erişim izinleri (CORS)
+
+
+# Veritabanı ve Tabloları Otomatik Oluşturma
+def init_db():
+  conn = sqlite3.connect('database.db')
+  cursor = conn.cursor()
+
+  # Chat geçmişi tablosu
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            user_message TEXT,
+            bot_response TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+  # Lead (Müşteri Adayı) tablosu
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS leads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            contact TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+  conn.commit()
+  conn.close()
+
+
+# Sunucu her başladığında tabloları kontrol et/oluştur
+init_db()
+
+# Groq API istemcisi
+groq_client = Groq(api_key=os.environ.get('GROQ_API_KEY'))
+
 
 @app.route('/', methods=['GET'])
 def home():
-    """Servisin aktifliğini denetleyen sağlık kontrolü (Health Check)."""
-    return jsonify({
-        "status": "online",
-        "service": "Droppix SmartLead AI Backend",
-        "version": "1.0.0"
-    }), 200
+  return jsonify({"status": "online", "service": "Droppix SmartLead AI Backend"})
+
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """
-    Kullanıcı mesajını alır, veritabanından geçmişi okur, 
-    Groq AI yanıtını üretir ve konuşmayı kaydeder.
-    """
+  try:
     data = request.get_json() or {}
-    user_message = data.get('message')
+    user_message = data.get('message', '')
     session_id = data.get('session_id', 'default_session')
 
     if not user_message:
-        return jsonify({"error": "Mesaj alanı boş bırakılamaz."}), 400
+      return jsonify({'error': 'Mesaj boş olamaz.'}), 400
 
-    conn = get_db_connection()
+    # Groq AI Model Çağrısı
+    completion = groq_client.chat.completions.create(
+        model='llama-3.3-70b-versatile',
+        messages=[
+            {
+                'role': 'system',
+                'content': (
+                    'Sen Droppix platformunun akıllı asistani Droppix AI\'sin.'
+                    ' Kullanıcılara nazik, yardımsever ve özgün yanıtlar ver.'
+                ),
+            },
+            {'role': 'user', 'content': user_message},
+        ],
+    )
+
+    bot_response = completion.choices[0].message.content
+
+    # Veritabanına Kaydetme
+    conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
-
-    # Kullanıcıya özel son 6 mesajlık konuşma geçmişini çek
     cursor.execute(
-        "SELECT sender, message FROM chat_history WHERE session_id = ? ORDER BY timestamp ASC LIMIT 6",
-        (session_id,)
-    )
-    raw_history = cursor.fetchall()
-    chat_history = [{"sender": row["sender"], "message": row["message"]} for row in raw_history]
-
-    # AI Yanıtını Üret
-    ai_response = get_ai_response(user_message, chat_history)
-
-    # Sohbeti Veritabanına İşle
-    cursor.execute(
-        "INSERT INTO chat_history (session_id, sender, message) VALUES (?, ?, ?)",
-        (session_id, 'user', user_message)
-    )
-    cursor.execute(
-        "INSERT INTO chat_history (session_id, sender, message) VALUES (?, ?, ?)",
-        (session_id, 'assistant', ai_response)
+        'INSERT INTO chat_history (session_id, user_message, bot_response)'
+        ' VALUES (?, ?, ?)',
+        (session_id, user_message, bot_response),
     )
     conn.commit()
     conn.close()
 
-    return jsonify({
-        "status": "success",
-        "session_id": session_id,
-        "response": ai_response
-    }), 200
+    return jsonify({'response': bot_response})
+
+  except Exception as e:
+    print(f'Chat Hata: {e}')
+    return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/lead', methods=['POST'])
-def add_lead():
-    """
-    Potansiyel B2B partner veya B2C kullanıcının iletişim bilgilerini kaydeder.
-    """
+def lead():
+  try:
     data = request.get_json() or {}
-    name = data.get('name')
-    email = data.get('email')
-    phone = data.get('phone', '')
-    user_type = data.get('user_type', 'b2c')  # 'b2c' veya 'b2b'
+    name = data.get('name', '')
+    contact = data.get('contact', '')
     notes = data.get('notes', '')
 
-    if not name or not email:
-        return jsonify({"error": "İsim ve e-posta zorunludur."}), 400
+    if not name or not contact:
+      return jsonify({'error': 'İsim ve iletişim bilgisi zorunludur.'}), 400
 
-    conn = get_db_connection()
+    conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO leads (name, email, phone, user_type, notes) VALUES (?, ?, ?, ?, ?)",
-        (name, email, phone, user_type, notes)
+        'INSERT INTO leads (name, contact, notes) VALUES (?, ?, ?)',
+        (name, contact, notes),
     )
     conn.commit()
     conn.close()
 
-    return jsonify({
-        "status": "success",
-        "message": f"{user_type.upper()} kaydı başarıyla oluşturuldu!"
-    }), 201
+    return jsonify({'status': 'success', 'message': 'Lead kaydedildi.'})
+
+  except Exception as e:
+    print(f'Lead Hata: {e}')
+    return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
-    # Lokal geliştirme sunucusu (Port 5000)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+  app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
