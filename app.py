@@ -8,7 +8,6 @@ app = Flask(__name__)
 CORS(app)
 
 
-# Veritabanı ve Tabloları Oluşturma
 def init_db():
   conn = sqlite3.connect('database.db')
   cursor = conn.cursor()
@@ -66,16 +65,15 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # Groq üzerinde aktif denenecek modeller sıralı listesi
+    # Groq üzerindeki güncel aktif modeller
     candidate_models = [
         'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'mixtral-8x7b-32768',
-        'gemma2-9b-it',
+        'llama-3.1-70b-versatile',
+        'llama-3.2-3b-preview',
     ]
 
     bot_response = None
-    last_error = ''
+    errors = []
 
     for model_name in candidate_models:
       try:
@@ -96,16 +94,12 @@ def chat():
         if bot_response:
           break
       except Exception as err:
-        last_error = str(err)
+        errors.append(f'{model_name}: {str(err)}')
 
     if not bot_response:
+      first_err = errors[0] if errors else 'Bilinmeyen hata'
       return (
-          jsonify({
-              'error': (
-                  'Groq API yanıt vermedi. Lütfen API anahtarınızı (GROQ_API_KEY)'
-                  f' kontrol edin. Detay: {last_error}'
-              )
-          }),
+          jsonify({'error': f'Groq bağlantı hatası. Detay: {first_err}'}),
           500,
       )
 
