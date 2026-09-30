@@ -68,10 +68,24 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Aktif modelleri sorgula
+    # 1. Aktif modelleri al ve sohbet dışı (guardrail/whisper/classification) modelleri filtrele
     try:
       models_page = client.models.list()
-      available_models = [m.id for m in models_page.data]
+      all_models = [m.id for m in models_page.data]
+
+      # Sohbet formatına uygun olmayan modelleri listeden çıkar
+      ignored_keywords = [
+          'guard',
+          'whisper',
+          'embed',
+          'classifier',
+          'moderation',
+      ]
+      available_models = [
+          m
+          for m in all_models
+          if not any(ik in m.lower() for ik in ignored_keywords)
+      ]
     except Exception as api_err:
       return (
           jsonify({
@@ -82,16 +96,17 @@ def chat():
 
     if not available_models:
       return (
-          jsonify({'error': 'Groq hesabınızda aktif model bulunamadı.'}),
+          jsonify({'error': 'Groq hesabınızda uygun sohbet modeli bulunamadı.'}),
           500,
       )
 
-    # 2. Türkçe kalitesi yüksek modelleri önceliklendir
+    # 2. Sohbet için en kaliteli Türkçe üreten modelleri önceliklendir
     chosen_model = available_models[0]
     preferred_keywords = [
         'llama-3.3-70b',
         'llama-3.1-70b',
         'llama-3.1-8b',
+        'llama-3.2-3b',
         'mixtral',
         'gemma',
     ]
@@ -105,9 +120,11 @@ def chat():
     # 3. Groq İstegi
     system_prompt = (
         "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
-        "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı asistanıyım' ifadesini kullan. "
-        "Kullanıcı işbirliği, iletişim veya hizmet almak istediğinde nazikçe memnuniyetini belirt ve "
-        "size ulaşabilmemiz için adını ve iletişim bilgilerini (e-posta veya telefon) paylaşmasını rica et."
+        "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı"
+        ' asistanıyım\' ifadesini kullan. Kullanıcı işbirliği, iletişim veya'
+        ' hizmet almak istediğinde nazikçe memnuniyetini belirt ve size'
+        ' ulaşabilmemiz için adını ve iletişim bilgilerini (e-posta veya'
+        ' telefon) paylaşmasını rica et.'
     )
 
     completion = client.chat.completions.create(
@@ -121,7 +138,7 @@ def chat():
 
     bot_response = completion.choices[0].message.content
 
-    # 4. Veritabanına Kaydet (Hata alsa bile kullanıcının sohbetini bozmaz)
+    # 4. Veritabanına Kaydet
     try:
       conn = sqlite3.connect('database.db')
       cursor = conn.cursor()
