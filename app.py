@@ -68,14 +68,10 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Öncelikli Yüksek Kaliteli Türkçe Modeller
-    preferred_models = [
-        'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'llama-3.2-3b-preview',
-    ]
+    # Güncel ve Aktif Groq Modelleri
+    preferred_models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
 
-    # 2. Sistem Yönergesi
+    # Sistem Yönergesi
     system_prompt = (
         "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
         "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı"
@@ -89,7 +85,6 @@ def chat():
     used_model = None
     last_error = ''
 
-    # Önce kaliteli Llama modellerini dene
     for model_id in preferred_models:
       try:
         completion = client.chat.completions.create(
@@ -119,7 +114,7 @@ def chat():
           500,
       )
 
-    # 3. Veritabanına Kaydet
+    # Veritabanına Kaydet
     try:
       conn = sqlite3.connect('database.db')
       cursor = conn.cursor()
