@@ -68,40 +68,12 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # 1. Hesaptaki tüm modelleri al ve sohbet dışı/özel onaylı modelleri süz
-    try:
-      models_page = client.models.list()
-      all_models = [m.id for m in models_page.data]
-
-      ignored_keywords = [
-          'guard',
-          'whisper',
-          'embed',
-          'classifier',
-          'moderation',
-          'orpheus',
-          'vision',
-      ]
-      chat_models = [
-          m
-          for m in all_models
-          if not any(ik in m.lower() for ik in ignored_keywords)
-      ]
-    except Exception as api_err:
-      return (
-          jsonify(
-              {'error': f'Groq modelleri listelenemedi. Detay: {str(api_err)}'}
-          ),
-          500,
-      )
-
-    if not chat_models:
-      return (
-          jsonify({
-              'error': 'Groq hesabınızda kullanılabilir sohbet modeli bulunamadı.'
-          }),
-          500,
-      )
+    # 1. Öncelikli Yüksek Kaliteli Türkçe Modeller
+    preferred_models = [
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'llama-3.2-3b-preview',
+    ]
 
     # 2. Sistem Yönergesi
     system_prompt = (
@@ -117,8 +89,8 @@ def chat():
     used_model = None
     last_error = ''
 
-    # 3. Modellere sırayla istek at, yanıt veren ilk modeli seç
-    for model_id in chat_models:
+    # Önce kaliteli Llama modellerini dene
+    for model_id in preferred_models:
       try:
         completion = client.chat.completions.create(
             model=model_id,
@@ -140,14 +112,14 @@ def chat():
       return (
           jsonify({
               'error': (
-                  'Hiçbir aktif sohbet modeli yanıt veremedi. Son hata:'
+                  'Sohbet modeli yanıt veremedi. Lütfen tekrar deneyin. Detay:'
                   f' {last_error}'
               )
           }),
           500,
       )
 
-    # 4. Veritabanına Kaydet
+    # 3. Veritabanına Kaydet
     try:
       conn = sqlite3.connect('database.db')
       cursor = conn.cursor()
