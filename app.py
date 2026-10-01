@@ -68,10 +68,51 @@ def chat():
 
     client = Groq(api_key=api_key)
 
-    # Güncel ve Aktif Groq Modelleri
-    preferred_models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
+    # 1. Groq hesabında ŞU AN aktif olan tüm modelleri çek
+    active_model_ids = []
+    try:
+      models_page = client.models.list()
+      active_model_ids = [m.id for m in models_page.data]
+    except Exception as api_err:
+      print(f'Model listesi çekilemedi: {api_err}')
 
-    # Sistem Yönergesi
+    # 2. Tercih edilen öncelikli Türkçe modeller
+    preferred_candidates = [
+        'llama-3.3-70b-versatile',
+        'llama3-70b-8192',
+        'llama3-8b-8192',
+        'gemma2-9b-it',
+    ]
+
+    # Sadece Groq'ta ŞU AN GERÇEKTEN VAR OLAN modelleri listeye al
+    candidate_models = [
+        m for m in preferred_candidates if m in active_model_ids
+    ]
+
+    # Eğer tercih edilenler listede yoksa, aktif modellerden sohbet dışı olanları süzerek yedek oluştur
+    if not candidate_models:
+      ignored_keywords = [
+          'guard',
+          'whisper',
+          'embed',
+          'classifier',
+          'moderation',
+          'orpheus',
+          'vision',
+          'allam',
+          'speech',
+      ]
+      candidate_models = [
+          m
+          for m in active_model_ids
+          if not any(ik in m.lower() for ik in ignored_keywords)
+      ]
+
+    # Son çare güvenlik yedeği
+    if not candidate_models:
+      candidate_models = ['llama-3.3-70b-versatile']
+
+    # 3. Sistem Yönergesi
     system_prompt = (
         "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
         "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı"
@@ -85,7 +126,8 @@ def chat():
     used_model = None
     last_error = ''
 
-    for model_id in preferred_models:
+    # Doğrulanmış modelleri sırayla dene
+    for model_id in candidate_models:
       try:
         completion = client.chat.completions.create(
             model=model_id,
@@ -114,7 +156,7 @@ def chat():
           500,
       )
 
-    # Veritabanına Kaydet
+    # 4. Veritabanına Kaydet
     try:
       conn = sqlite3.connect('database.db')
       cursor = conn.cursor()
