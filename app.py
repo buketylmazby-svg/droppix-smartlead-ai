@@ -84,12 +84,10 @@ def chat():
         'gemma2-9b-it',
     ]
 
-    # Sadece Groq'ta ŞU AN GERÇEKTEN VAR OLAN modelleri listeye al
     candidate_models = [
         m for m in preferred_candidates if m in active_model_ids
     ]
 
-    # Eğer tercih edilenler listede yoksa, aktif modellerden sohbet dışı olanları süzerek yedek oluştur
     if not candidate_models:
       ignored_keywords = [
           'guard',
@@ -108,25 +106,35 @@ def chat():
           if not any(ik in m.lower() for ik in ignored_keywords)
       ]
 
-    # Son çare güvenlik yedeği
     if not candidate_models:
       candidate_models = ['llama-3.3-70b-versatile']
 
-    # 3. Sistem Yönergesi
+    # 3. Detaylandırılmış Droppix Sistem Yönergesi
     system_prompt = (
-        "Sen Droppix AI'sin, Droppix platformunun akıllı asistanısın. "
-        "YALNIZCA Türkçe yanıt ver. Kendini tanıtırken 'Droppix'in akıllı"
-        ' asistanıyım\' ifadesini kullan. Kullanıcı işbirliği, iletişim veya'
-        ' hizmet almak istediğinde nazikçe memnuniyetini belirt ve size'
-        ' ulaşabilmemiz için adını ve iletişim bilgilerini (e-posta veya'
-        ' telefon) paylaşmasını rica et.'
+        "Sen Droppix AI'sin, Droppix platformunun resmi akıllı asistanısın.\n"
+        "YALNIZCA Türkçe yanıt ver.\n\n"
+        "DROPPİX PLATFORMU HAKKINDA BİLGİ:\n"
+        "- Droppix; kullanıcıların fotoğraflarını, düşüncelerini, müziklerini"
+        " ve gittikleri mekanları periyodik/haftalık kolajlar ('drop'lar) halinde"
+        " bir araya getiren yapay zeka destekli bir dijital platformdur.\n"
+        "- Kullanıcılara kişiselleştirilmiş istatistik özetleri ve 'Live it'"
+        " gibi etkileşimli öneri özellikleri sunar.\n"
+        "- Dijital izleri ve anıları estetik, anlamlı bir akışta toplamayı"
+        " hedefler.\n\n"
+        "KURALLARIN VE GÖREVLERİN:\n"
+        "1. Kullanıcı 'Droppix nedir?' veya 'Nasıl çalışır?' gibi sorular"
+        " sorduğunda yukarıdaki bilgileri kullanarak net, samimi ve profesyonel"
+        " bir açıklama yap.\n"
+        "2. Kullanıcı iş birliği kurmak, iletişim sağlamak veya hizmet almak"
+        " istediğini belirttiğinde memnuniyetini dile getir ve size ulaşabilmemiz"
+        " için adını ve iletişim bilgilerini (e-posta veya telefon numarası)"
+        " paylaşmasını rica et."
     )
 
     bot_response = None
     used_model = None
     last_error = ''
 
-    # Doğrulanmış modelleri sırayla dene
     for model_id in candidate_models:
       try:
         completion = client.chat.completions.create(
