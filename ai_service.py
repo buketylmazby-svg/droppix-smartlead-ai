@@ -1,42 +1,63 @@
-from groq import Groq
+import requests
 from config import Config
 
-def get_ai_response(user_message, chat_history=None):
-    """
-    Kullanıcı mesajını ve geçmiş sohbeti alarak Droppix B2B/B2C stratejisine uygun AI yanıtı üretir.
-    """
-    client = Groq(api_key=Config.GROQ_API_KEY)
+class AIServiceError(Exception):
+    """AI servisinde oluşan hatalar için özel istisna sınıfı."""
+    pass
 
-    # Sistem kişiliğini (BUSINESS_CONTEXT) ekle
-    messages = [
-        {"role": "system", "content": Config.BUSINESS_CONTEXT}
-    ]
+class AIService:
+    def __init__(self):
+        self.api_key = Config.GROQ_API_KEY
+        self.model = "llama-3.1-8b-instant"
+        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
 
-    # Varsa geçmiş konuşmaları mesaj listesine dahil et
-    if chat_history:
-        for chat in chat_history:
-            messages.append({
-                "role": "assistant" if chat["sender"] == "assistant" else "user",
-                "content": chat["message"]
-            })
+    def yanit_uret(self, mesaj, gecmis=None):
+        """
+        Kullanıcı mesajını ve varsa geçmiş sohbeti alır, 
+        Groq API üzerinden Droppix sistem yönergesiyle yanıt üretir.
+        """
+        if not self.api_key:
+            return "Droppix Asistanı şu an demo modunda. Ekibimizin sizinle iletişime geçmesi için lütfen form doldurun!"
 
-    # Güncel kullanıcı mesajını ekle
-    messages.append({"role": "user", "content": user_message})
+        if gecmis is None:
+            gecmis = []
 
-    try:
-        response = client.chat.completions.create(
-            model="qwen/qwen3.8-27b",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=600
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Ağ bağlantısı veya API hatası oluştu: {str(e)}"
+        # Sistem talimatını (BUSINESS_CONTEXT) en başa ekle
+        messages = [
+            {"role": "system", "content": Config.BUSINESS_CONTEXT}
+        ]
 
-if __name__ == '__main__':
-    # Hızlı Test
-    test_soru = "Merhaba! Kadıköy'de mekan işletmecisiyim, Droppix ile nasıl iş birliği yapabilirim?"
-    print(f"\n--- TEST SORUSU ---\n{test_soru}\n")
-    print("--- DROPPIX AI YANITI ---")
-    print(get_ai_response(test_soru))
+        # Varsa geçmiş sohbetleri ekle
+        for item in gecmis:
+            messages.append(item)
+
+        # Yeni kullanıcı mesajını ekle
+        messages.append({"role": "user", "content": mesaj})
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.7
+        }
+
+        try:
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data['choices'][0]['message']['content']
+            else:
+                print(f"Groq API Hatası ({response.status_code}): {response.text}")
+                raise AIServiceError("Yapay zekâ yanıt oluşturamadı.")
+
+        except requests.exceptions.RequestException as e:
+            print(f"Bağlantı Hatası: {e}")
+            raise AIServiceError("AI servisi ile bağlantı kurulamadı.")
+
+# Kolay kullanım için tek bir örnek (instance) oluştur
+ai_service = AIService()
