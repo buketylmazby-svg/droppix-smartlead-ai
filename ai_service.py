@@ -1,63 +1,55 @@
-import requests
-from config import Config
+import os
+from groq import Groq
 
 class AIServiceError(Exception):
-    """AI servisinde oluşan hatalar için özel istisna sınıfı."""
     pass
 
 class AIService:
     def __init__(self):
-        self.api_key = Config.GROQ_API_KEY
-        self.model = "llama-3.3-70b-versatile"
-        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
-
-    def yanit_uret(self, mesaj, gecmis=None):
-        """
-        Kullanıcı mesajını ve varsa geçmiş sohbeti alır, 
-        Groq API üzerinden Droppix sistem yönergesiyle yanıt üretir.
-        """
-        if not self.api_key:
-            return "Droppix Asistanı şu an demo modunda. Ekibimizin sizinle iletişime geçmesi için lütfen form doldurun!"
-
-        if gecmis is None:
-            gecmis = []
-
-        # Sistem talimatını (BUSINESS_CONTEXT) en başa ekle
-        messages = [
-            {"role": "system", "content": Config.BUSINESS_CONTEXT}
+        # Groq üzerindeki en stabil modeller (biri çalışmazsa otomatik diğerine geçer)
+        self.models = [
+            "llama3-8b-8192",
+            "llama3-70b-8192",
+            "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768"
         ]
 
-        # Varsa geçmiş sohbetleri ekle
-        for item in gecmis:
-            messages.append(item)
+    def yanit_uret(self, mesaj, gecmis=None):
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise AIServiceError("GROQ_API_KEY sistemde tanımlı değil.")
 
-        # Yeni kullanıcı mesajını ekle
+        client = Groq(api_key=api_key)
+
+        system_prompt = (
+            "Sen Droppix platformunun yapay zeka asistanısın. "
+            "Kullanıcıların anılarını, fotoğraflarını, müziklerini ve düşüncelerini "
+            "haftalık dijital kolajlar (Drop) halinde düzenleyen yaratıcı, samimi ve "
+            "hikaye anlatıcısı bir tona sahipsin. Ayrıca kullanıcıların bu anıları canlı "
+            "deneyimlemesini sağlayan 'Live it' özelliğini tanıtırsın."
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        if gecmis:
+            messages.extend(gecmis)
         messages.append({"role": "user", "content": mesaj})
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        son_hata = None
+        # Modelleri sırayla dener
+        for model_name in self.models:
+            try:
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=500
+                )
+                return completion.choices[0].message.content
+            except Exception as e:
+                son_hata = str(e)
+                print(f"Model {model_name} denenirken hata alındı, diğer modele geçiliyor: {son_hata}")
+                continue
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.7
-        }
+        raise AIServiceError(f"Yapay zekâ yanıt oluşturamadı. Detay: {son_hata}")
 
-        try:
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                return data['choices'][0]['message']['content']
-            else:
-                print(f"Groq API Hatası ({response.status_code}): {response.text}")
-                raise AIServiceError("Yapay zekâ yanıt oluşturamadı.")
-
-        except requests.exceptions.RequestException as e:
-            print(f"Bağlantı Hatası: {e}")
-            raise AIServiceError("AI servisi ile bağlantı kurulamadı.")
-
-# Kolay kullanım için tek bir örnek (instance) oluştur
 ai_service = AIService()
