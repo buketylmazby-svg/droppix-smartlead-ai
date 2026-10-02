@@ -6,12 +6,11 @@ class AIServiceError(Exception):
 
 class AIService:
     def __init__(self):
-        # Groq üzerindeki en stabil modeller (biri çalışmazsa otomatik diğerine geçer)
+        # Groq üzerinde şu an aktif olan güncel modeller
         self.models = [
-            "llama3-8b-8192",
-            "llama3-70b-8192",
             "llama-3.3-70b-versatile",
-            "mixtral-8x7b-32768"
+            "gemma2-9b-it",
+            "llama-3.2-3b-preview"
         ]
 
     def yanit_uret(self, mesaj, gecmis=None):
@@ -34,8 +33,7 @@ class AIService:
             messages.extend(gecmis)
         messages.append({"role": "user", "content": mesaj})
 
-        son_hata = None
-        # Modelleri sırayla dener
+        hatalar = []
         for model_name in self.models:
             try:
                 completion = client.chat.completions.create(
@@ -46,10 +44,11 @@ class AIService:
                 )
                 return completion.choices[0].message.content
             except Exception as e:
-                son_hata = str(e)
-                print(f"Model {model_name} denenirken hata alındı, diğer modele geçiliyor: {son_hata}")
+                hata_msg = f"{model_name}: {str(e)}"
+                hatalar.append(hata_msg)
+                print(f"Model deneme hatası -> {hata_msg}")
                 continue
 
-        raise AIServiceError(f"Yapay zekâ yanıt oluşturamadı. Detay: {son_hata}")
+        raise AIServiceError(f"Yapay zekâ yanıt oluşturamadı. Detay: {' | '.join(hatalar)}")
 
 ai_service = AIService()
