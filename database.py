@@ -1,44 +1,55 @@
 import sqlite3
-from config import Config
 
-def get_db_connection():
-    """Veritabanı bağlantısı oluşturur ve satırları sözlük yapısında döndürür."""
-    conn = sqlite3.connect(Config.DATABASE_URL)
+def get_db():
+    """Veritabanı bağlantısı oluşturur ve sütun isimleriyle erişim sağlar."""
+    conn = sqlite3.connect('database.db')
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
-    """Gerekli veritabanı tablolarını sıfırdan oluşturur."""
-    conn = get_db_connection()
+def init_db(app=None):
+    """'leads' tablosunu veritabanında oluşturur (yoksa)."""
+    conn = get_db()
     cursor = conn.cursor()
-    
-    # 1. Potansiyel Kullanıcı ve Partner Kayıtları (Leads)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            email TEXT,
-            phone TEXT,
-            user_type TEXT, -- 'b2c' (bireysel kullanıcı) veya 'b2b' (işletme/partner)
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            isim TEXT NOT NULL,
+            telefon TEXT NOT NULL,
+            mesaj TEXT,
+            tarih DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
-    # 2. Sohbet Geçmişi (Chat History)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            sender TEXT, -- 'user' veya 'assistant'
-            message TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
     conn.commit()
     conn.close()
-    print("✅ Veritabanı tabloları (leads & chat_history) başarıyla oluşturuldu!")
 
-if __name__ == '__main__':
-    init_db()
+def lead_ekle(isim, telefon, mesaj=""):
+    """Yeni kayıt ekler (SQL Injection'a karşı ? parametresi kullanılır)."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO leads (isim, telefon, mesaj) VALUES (?, ?, ?)",
+            (isim, telefon, mesaj)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Veritabanı ekleme hatası: {e}")
+        return False
+
+def tum_leadler():
+    """Tüm kayıtları en yeniden eskiye sıralı olarak liste halinde getirir."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, isim, telefon, mesaj, tarih FROM leads ORDER BY id DESC")
+        rows = cursor.fetchall()
+        
+        # JSON dönüştürmeye uygun sözlük (dict) listesi oluştur
+        leadler = [dict(row) for row in rows]
+        conn.close()
+        return leadler
+    except Exception as e:
+        print(f"Veritabanı listeleme hatası: {e}")
+        return []
