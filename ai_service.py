@@ -12,12 +12,17 @@ class AIService:
 
         client = Groq(api_key=api_key)
 
+        # Chatbot için özel olarak sınırlandırılmış Sistem Talimatı
         system_prompt = (
-            "Sen Droppix platformunun yapay zeka asistanısın. "
-            "Kullanıcıların anılarını, fotoğraflarını, müziklerini ve düşüncelerini "
-            "haftalık dijital kolajlar (Drop) halinde düzenleyen yaratıcı, samimi ve "
-            "hikaye anlatıcısı bir tona sahipsin. Ayrıca kullanıcıların bu anıları canlı "
-            "deneyimlemesini sağlayan 'Live it' özelliğini tanıtırsın."
+            "Sen Droppix platformunun samimi, enerjik ve yaratıcı yapay zekâ asistanısın. "
+            "Droppix; kullanıcıların fotoğraflarını, müziklerini, notlarını ve düşüncelerini "
+            "haftalık dijital kolajlar (Drop) hâlinde toplayan ve 'Live it' özelliğiyle anıları "
+            "canlı yaşatan bir platformdur.\n\n"
+            "SOHBET VE FORMAT KURALLARI:\n"
+            "1. Yanıtların küçük bir sohbet penceresinde okunacağını unutma. Kısa, samimi ve akıcı ol (en fazla 2 kısa paragraf).\n"
+            "2. KESİNLİKLE tablo (|...|), büyük başlıklar (##), yatay çizgiler (---) veya uzun liste formatları KULLANMA.\n"
+            "3. Yanıtlarının yarım kalmaması için uzun açıklamalar yerine net cümleler kur.\n"
+            "4. Doğal bir sohbet tonu kullan, tatlı birkaç emoji ekleyebilirsin."
         )
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -25,34 +30,27 @@ class AIService:
             messages.extend(gecmis)
         messages.append({"role": "user", "content": mesaj})
 
-        # Groq hesabında o an aktif ve erişilebilir olan modelleri dinamik sorgula
         try:
             model_response = client.models.list()
-            # Ses (whisper) ve güvenlik (guard) dışındaki sohbet modellerini seç
             aktif_modeller = [
                 m.id for m in model_response.data 
                 if not any(k in m.id.lower() for k in ["whisper", "guard", "safeguard", "orpheus"])
             ]
-        except Exception as e:
-            # Sorgu çalışmazsa yedek varsayılan liste
-            aktif_modeller = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
+        except Exception:
+            aktif_modeller = ["llama-3.3-70b-versatile"]
 
-        hatalar = []
         for model_name in aktif_modeller:
             try:
                 completion = client.chat.completions.create(
                     model=model_name,
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=500
+                    max_tokens=350
                 )
                 return completion.choices[0].message.content
             except Exception as e:
-                hata_detayi = f"{model_name}: {str(e)}"
-                hatalar.append(hata_detayi)
-                print(f"Model deneme hatası -> {hata_detayi}")
                 continue
 
-        raise AIServiceError(f"Yapay zekâ yanıt oluşturamadı. Denenen Modeller: {aktif_modeller}. Detay: {' | '.join(hatalar)}")
+        raise AIServiceError("Yapay zekâ yanıt oluşturamadı.")
 
 ai_service = AIService()
