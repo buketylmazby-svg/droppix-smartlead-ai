@@ -8,7 +8,7 @@ class AIServiceError(Exception):
 class AIService:
     def __init__(self):
         self.api_key = Config.GROQ_API_KEY
-        self.model = "llama-3.1-8b-instant"
+        self.model = "llama-3.3-70b-versatile"
         self.api_url = "https://api.groq.com/openai/v1/chat/completions"
 
     def yanit_uret(self, mesaj, gecmis=None):
