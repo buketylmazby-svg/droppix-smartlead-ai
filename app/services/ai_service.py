@@ -37,7 +37,7 @@ class AIService:
                 if not any(k in m.id.lower() for k in ["whisper", "guard", "safeguard", "orpheus"])
             ]
         except Exception:
-            aktif_modeller = ["llama-3.3-70b-versatile"]
+            aktif_modeller = ["openai/gpt-oss-120b"]
 
         for model_name in aktif_modeller:
             try:
