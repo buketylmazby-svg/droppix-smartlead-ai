@@ -1,4 +1,3 @@
-
 import os
 import logging
 
@@ -65,11 +64,6 @@ class AIService:
                     "content": system_prompt
                 }
             ]
-<<<<<<< HEAD
-        except Exception:
-            aktif_modeller = ["openai/gpt-oss-120b"]
-=======
->>>>>>> 57eb89721e1e8501e73f32963b10d7881e347049
 
             # Geçmiş varsa yalnızca geçerli mesajları ekle.
             if gecmis:
